@@ -1,0 +1,38 @@
+{
+  "name": "yby-revenue-assurance-copilot",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:contractParser": "node tests/contractParser.boundary.test.js",
+    "test:aiProxy": "node tests/aiProxy.invoice-rejection.test.js",
+    "test:humanLock": "node tests/humanLock.invalidation.test.js",
+    "test": "node tests/contractParser.boundary.test.js && node tests/aiProxy.invoice-rejection.test.js && node tests/humanLock.invalidation.test.js"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.474.0",
+    "papaparse": "^5.5.2",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.6.0",
+    "xlsx": "^0.18.5",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.11"
+  }
+}
