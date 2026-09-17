@@ -12,7 +12,7 @@ import { HumanLockManager, HITL_STATES } from './utils/humanLockState.js';
 import { validateCurrencyMatch } from './utils/currencyGuard.js';
 import { reconcileContractToInvoices } from './utils/reconciliationEngine.js';
 import { createEvidencePack } from './utils/evidencePack.js';
-import { extractCommercialTermsRegexFallback } from './services/aiProxyClient.js';
+import { extractCommercialTermsRegexFallback, requestAiExtraction } from './services/aiProxyClient.js';
 
 export default function App() {
   // Navigation & Step Tracking
@@ -52,32 +52,104 @@ export default function App() {
   const handleContractLoaded = async ({ file, fileName, buffer, sampleBlocks }) => {
     setIsProcessingContract(true);
     setContractFileName(fileName);
-    setContractProgressMsg('Extracting contract clauses...');
+    setContractProgressMsg('Processing contract document...');
 
     try {
       let extracted;
-      if (sampleBlocks) {
-        // Fast path for demo sample
-        extracted = extractCommercialTermsRegexFallback(sampleBlocks);
-      } else {
-        // Mocking text extraction for uploaded PDF
-        extracted = extractCommercialTermsRegexFallback([
-          { pageNumber: 1, text: `Master Services Agreement for ${fileName}` },
-          { pageNumber: 2, text: 'Senior Cloud Architect: $175.00/hour\nDevOps Engineer: $135.00/hour' },
-          { pageNumber: 3, text: 'Annual escalation of 5.0% on anniversary' },
-        ]);
-      }
 
-      lockManagerRef.current.loadExtraction(extracted);
-      setTerms(extracted);
-      setIsLocked(false);
-      setLockedFingerprint(null);
-      setCanCalculate(false);
-      setCurrentStep(2);
+      if (sampleBlocks) {
+        // Explicit Demo MSA button path ONLY
+        extracted = extractCommercialTermsRegexFallback(sampleBlocks);
+        lockManagerRef.current.loadExtraction(extracted);
+        setTerms(extracted);
+        setIsLocked(false);
+        setLockedFingerprint(null);
+        setCanCalculate(false);
+        setCurrentStep(2);
+      } else if (buffer) {
+        // Real PDF parsing via In-Browser Web Worker (PDF.js)
+        setContractProgressMsg('Reading PDF pages in local Web Worker...');
+
+        const worker = new Worker(
+          new URL('./workers/contractParser.worker.js', import.meta.url),
+          { type: 'module' }
+        );
+
+        const parseResult = await new Promise((resolve, reject) => {
+          worker.onmessage = (e) => {
+            const { type, textBlocks, error, isScanned, page, totalPages } = e.data;
+            if (type === 'PARSE_PROGRESS') {
+              setContractProgressMsg(`Parsing PDF page ${page} of ${totalPages}...`);
+            } else if (type === 'PARSE_SUCCESS') {
+              worker.terminate();
+              resolve({ textBlocks, isScanned: false });
+            } else if (type === 'ERROR') {
+              worker.terminate();
+              reject(new Error(error || 'Failed to parse PDF document.'));
+            }
+          };
+          worker.onerror = (err) => {
+            worker.terminate();
+            reject(new Error(`PDF Worker Error: ${err.message || 'Worker failure'}`));
+          };
+          worker.postMessage({
+            type: 'PARSE_CONTRACT_PDF',
+            arrayBuffer: buffer,
+            fileName,
+          });
+        });
+
+        if (!parseResult.textBlocks || parseResult.textBlocks.length === 0) {
+          throw new Error('No readable text blocks could be extracted from this PDF. Please verify it is not an image-only scanned document.');
+        }
+
+        setContractProgressMsg('Extracting commercial rate cards and terms...');
+
+        // Pass text snippets to AI proxy or fallback (Raw PDF bytes NEVER sent to proxy)
+        const snippets = parseResult.textBlocks
+          .map((b) => b.text)
+          .filter((t) => t && t.trim().length > 0);
+
+        let extractionResponse;
+        try {
+          extractionResponse = await requestAiExtraction({ contractSnippets: snippets });
+        } catch {
+          extractionResponse = {
+            success: true,
+            terms: extractCommercialTermsRegexFallback(parseResult.textBlocks),
+          };
+        }
+
+        extracted = extractionResponse.terms || extractCommercialTermsRegexFallback(parseResult.textBlocks);
+
+        if (!extracted.rateCards || extracted.rateCards.length === 0) {
+          // Provide an empty unverified row so user can manually specify rates in HITL
+          extracted.rateCards = [
+            {
+              id: `rc_unverified_1`,
+              roleOrItem: 'Billable Item (Verify in HITL)',
+              unit: 'hour',
+              contractRate: 100.0,
+              pageReference: 1,
+              sourceSnippet: 'Please verify contracted rates against source document',
+            },
+          ];
+        }
+
+        lockManagerRef.current.loadExtraction(extracted);
+        setTerms(extracted);
+        setIsLocked(false);
+        setLockedFingerprint(null);
+        setCanCalculate(false);
+        setCurrentStep(2);
+      }
     } catch (err) {
       console.error('Contract extraction error:', err);
+      alert(`Contract Intake Error: ${err.message}`);
+      // Remain on Step 1, do NOT inject Demo MSA terms, do NOT proceed to reconciliation
     } finally {
       setIsProcessingContract(false);
+      setContractProgressMsg('');
     }
   };
 
