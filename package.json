@@ -13,7 +13,8 @@
     "test:contractParser": "node tests/contractParser.boundary.test.js",
     "test:aiProxy": "node tests/aiProxy.invoice-rejection.test.js",
     "test:humanLock": "node tests/humanLock.invalidation.test.js",
-    "test": "node tests/contractParser.boundary.test.js && node tests/aiProxy.invoice-rejection.test.js && node tests/humanLock.invalidation.test.js"
+    "test:evidencePack": "node tests/evidencePack.binding.test.js",
+    "test": "node tests/contractParser.boundary.test.js && node tests/aiProxy.invoice-rejection.test.js && node tests/humanLock.invalidation.test.js && node tests/evidencePack.binding.test.js"
   },
   "dependencies": {
     "clsx": "^2.1.1",
